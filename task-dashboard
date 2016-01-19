@@ -1,0 +1,210 @@
+#! /usr/bin/env perl
+
+use strict;
+use warnings;
+
+use feature 'say';
+
+=head1 NAME
+
+task-dashboard - A tmux-based dashboard for taskworrior
+
+=head1 SYNOPSIS
+
+	# just
+	task-dashboard
+
+=head1 DESCRIPTION
+
+Using tmux panes and task's hook capability a dashboard is created within a
+tmux session. If the hook gets triggered the views will be updated.
+
+=cut
+
+
+use File::Basename;
+use Getopt::Long;
+use JSON::PP qw(decode_json);
+
+
+my %DEFAULT = (
+	CONFIG_NAME => 'dashboard.json',
+
+	TMUX_SESSION_NAME => 'task-dashboard',
+	TMUX_WINDOW_NAME  => 'view',
+	TMUX_WIDTH  => 273,
+	TMUX_HEIGHT => 74,
+);
+
+# Taken from the 'Write Commands' list
+# (https://taskwarrior.org/download/task-2.5.0.ref.pdf)
+my @WRITE_COMMANDS = qw(
+	add annotate denotate append config delete done duplicate edit import log
+	modify prepent start stop synchronize undo
+
+	context
+); # Also accept 'context' since views probably depend on current context
+
+# Minimal interactive bash as a hack to keep panes open
+my $MINIMAL_BASH = 'bash --rcfile <(echo "unset MAIL PS1")';
+
+
+my $config = get_config();
+my $session = $config->{session} || $DEFAULT{TMUX_SESSION_NAME};
+my $window  = $config->{window}  || $DEFAULT{TMUX_WINDOW_NAME};
+
+# Called as task hook
+if (@ARGV == 6) {
+	my $task_context = get_task_context();
+
+	# Only update view if executed task command is write command
+	exit 0 unless grep { $_ eq $task_context->{command} } @WRITE_COMMANDS;
+
+	# Exit if the dashboard is not running, yet
+	dashboard_is_running($session) or exit 0;
+
+	my @pane_commands = parse($config->{layout}, 0, []);
+	for my $idx (0 .. $#pane_commands) {
+		my $command = $pane_commands[$idx];
+		$command =~ s/^\*//;
+		# Do not execute again if `!`-marker is present
+		next if $command =~ /^!/;
+		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
+	}
+
+# Called from terminal
+} else {
+	# Exit if the dashboard is already running
+	if (dashboard_is_running($session)) {
+		say "Task dashboard already running.";
+		tmux('attach', '-t', $session) if $config->{'auto-attach'};
+		exit 0;
+	}
+
+	my @pane_commands = parse($config->{layout}, 0, \my @split_options);;
+
+	my $width  = $config->{width}  || $DEFAULT{TMUX_WIDTH};
+	my $height = $config->{height} || $DEFAULT{TMUX_HEIGHT};
+
+	# Setup layout
+	tmux('new', '-s', $session, '-n', $window, '-d', '-x', $width, '-y', $height, $MINIMAL_BASH);
+	tmux('set', '-t', "$session:$window", 'status', "off");
+	tmux('split-window', @{$_}, $MINIMAL_BASH) for @split_options;
+
+	# Executing commands initially
+	for my $idx (0 .. $#pane_commands) {
+		my $command = $pane_commands[$idx];
+		# Select pane if `*`-marker is present
+		tmux('select-pane', '-t', "$session:$window.%$idx") if $command =~ s/^\*//;
+		$command =~ s/^!//;
+		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
+	}
+
+	ensure_hook_link();
+	tmux('attach', '-t', $session) if $config->{'auto-attach'};
+}
+
+
+sub get_config {
+	my $config_file = get_config_file();
+
+	die "Cannot find dashboard configuration!\n" unless -f $config_file;
+
+	open my $fh, '<', $config_file or die $!;
+	local $/;
+	my $config = decode_json(<$fh>);
+	close $fh or warn $!;
+
+	return $config;
+}
+
+sub get_config_file {
+	GetOptions('c|config=s' => \my $config);
+
+	unless (defined $config) {
+		$config = task_config('rc.data.location').'/'.$DEFAULT{CONFIG_NAME};
+	}
+
+	return $config;
+}
+
+sub get_task_context {
+	my $context = {};
+	my $idx = 0;
+	for (qw(api args command rc data version)) {
+		$context->{$_} = $ARGV[$idx++] =~ s/^$_://r or return;
+	}
+	return $context;
+}
+
+sub parse {
+	my $layer = shift;
+	my $pivot_id = shift;
+	my $s_opts = shift;
+
+	my ($layout, $contents) = each %{$layer};
+	my ($split, @parts) = split /:/, $layout;
+	my ($pivot) = grep { $parts[$_] eq '~' } 0 .. $#parts;
+
+	die if @parts != @{$contents};
+
+	# ID offset is consequently number of created panes
+	my $id_offset = @{$s_opts};
+
+	# TODO Move $session and $window variable into this subroutine instead of
+	#      using their global scope
+	for my $idx (0 .. $pivot-1) {
+		push @{$s_opts}, [ '-t', "$session:$window.%$pivot_id", "-$split", "-$parts[$idx]", '-b' ];
+	}
+	for my $idx (reverse $pivot+1 .. $#parts) {
+		push @{$s_opts}, [ '-t', "$session:$window.%$pivot_id", "-$split", "-$parts[$idx]" ];
+	}
+
+	my @indeces = ( $pivot, 0 .. $pivot-1, reverse $pivot+1 .. $#parts );
+	my @commands = @{$contents}[@indeces];
+
+	# Expand commands recursively
+	for my $idx (0 .. $#commands) {
+		my $command = $commands[$idx];
+		if (ref $command eq 'HASH') {
+			my $p_id = $idx + $id_offset; # Index + the count of split-window w/o this round
+			# First element is command of pivot pane
+			($commands[$idx], my @sub_cmds) = parse($command, $p_id, $s_opts);
+			push @commands, @sub_cmds;
+		}
+	}
+
+	return @commands;
+}
+
+sub dashboard_is_running {
+	my $session = shift;
+	return not system "tmux has-session -t '$session' > /dev/null 2>&1";
+}
+
+sub ensure_hook_link {
+	my $target = resolve_link($0);
+	my $symlink = task_config('rc.data.location') . '/hooks/on-exit_dashboard';
+	if (-e $symlink) {
+		die "Hook symlink points to another location!\n" if resolve_link($symlink) ne $target;
+	} else {
+		symlink $target, $symlink;
+	}
+}
+
+sub resolve_link {
+	my $target = shift;
+	$target = readlink $target while -l $target;
+	return $target;
+}
+
+sub task_config {
+	chomp (my $output = `task rc.verbose:nothing rc.hooks:off _get @_`);
+	$output =~ s/^~/$ENV{HOME}/; # Tilde expansion
+	return $output;
+}
+
+sub tmux {
+	system 'tmux', @_;
+}
+
