@@ -59,6 +59,8 @@ Consider the following directives: `v:~:p50:p33`. This will split the pane into
 three even panes. First, the pane is split with a 2:1 ratio, then the pane is
 split again with a 1:1 ratio resulting in 1:1:1.
 
+See the [example configuration](doc/sample-config.json) file for a more complex example.
+
 **WARNING:** If you don't pay attention to always include the `rc.hooks:off`
 option in task commands (use `rc.verbose:hook` to avoid unnecessary output) you
 easily create a *fork bomb* (because using task commands invokes the hook which
