@@ -7,7 +7,7 @@
 	"layout" : {
 		"v:~:p33:l2" : [
 			{ "h:~:p33" : [
-				"task rc.verbose:label rc.hooks:off long",
+				"task rc.verbose:label rc.hooks:off",
 				{ "v:~:p50:p33" : [
 					"task rc.verbose:label rc.hooks:off summary",
 					"task rc.verbose:label rc.hooks:off overdue",
