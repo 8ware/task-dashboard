@@ -70,6 +70,7 @@ if (@ARGV == 6) {
 		$command =~ s/^\*//;
 		# Do not execute again if `!`-marker is present
 		next if $command =~ /^!/;
+		$command = sanitize($command);
 		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
 	}
 
@@ -101,6 +102,7 @@ if (@ARGV == 6) {
 		# Select pane if `*`-marker is present
 		tmux('select-pane', '-t', "$session:$window.%$idx") if $command =~ s/^\*//;
 		$command =~ s/^!//;
+		$command = sanitize($command);
 		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
 	}
 
@@ -203,5 +205,13 @@ sub task_config {
 
 sub tmux {
 	system 'tmux', @_;
+}
+
+sub sanitize {
+	my $command = shift;
+
+	$command =~ s/^\s*\Ktask\b/task rc.verbose:label rc.hooks:off/;
+
+	return $command;
 }
 
