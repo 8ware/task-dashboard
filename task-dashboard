@@ -71,7 +71,7 @@ if (@ARGV == 6) {
 		# Do not execute again if `!`-marker is present
 		next if $command =~ /^!/;
 		$command = sanitize($command);
-		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
+		tmux('send-keys', '-t', "$session:$window.$idx", "clear; $command", 'Enter');
 	}
 
 # Called from terminal
@@ -100,10 +100,10 @@ if (@ARGV == 6) {
 	for my $idx (0 .. $#pane_commands) {
 		my $command = $pane_commands[$idx];
 		# Select pane if `*`-marker is present
-		tmux('select-pane', '-t', "$session:$window.%$idx") if $command =~ s/^\*//;
+		tmux('select-pane', '-t', "$session:$window.$idx") if $command =~ s/^\*//;
 		$command =~ s/^!//;
 		$command = sanitize($command);
-		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
+		tmux('send-keys', '-t', "$session:$window.$idx", "clear; $command", 'Enter');
 	}
 
 	tmux('attach', '-t', $session) if $config->{'auto-attach'};
@@ -159,10 +159,10 @@ sub parse {
 	# TODO Move $session and $window variable into this subroutine instead of
 	#      using their global scope
 	for my $idx (0 .. $pivot-1) {
-		push @{$s_opts}, [ '-t', "$session:$window.%$pivot_id", "-$split", "-$parts[$idx]", '-b' ];
+		push @{$s_opts}, [ '-t', "$session:$window.$pivot_id", "-$split", "-$parts[$idx]", '-b' ];
 	}
 	for my $idx (reverse $pivot+1 .. $#parts) {
-		push @{$s_opts}, [ '-t', "$session:$window.%$pivot_id", "-$split", "-$parts[$idx]" ];
+		push @{$s_opts}, [ '-t', "$session:$window.$pivot_id", "-$split", "-$parts[$idx]" ];
 	}
 
 	my @indeces = ( $pivot, 0 .. $pivot-1, reverse $pivot+1 .. $#parts );
