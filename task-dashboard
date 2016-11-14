@@ -22,6 +22,7 @@ tmux session. If the hook gets triggered the views will be updated.
 =cut
 
 
+use Cwd qw(abs_path);
 use File::Basename;
 use Getopt::Long;
 use JSON::PP qw(decode_json);
@@ -86,6 +87,9 @@ if (@ARGV == 6) {
 	my $width  = $config->{width}  || $DEFAULT{TMUX_WIDTH};
 	my $height = $config->{height} || $DEFAULT{TMUX_HEIGHT};
 
+	# Check hook link before creating tmux session
+	ensure_hook_link();
+
 	# Setup layout
 	tmux('new', '-s', $session, '-n', $window, '-d', '-x', $width, '-y', $height, $MINIMAL_BASH);
 	tmux('set', '-t', "$session:$window", 'status', "off");
@@ -100,7 +104,6 @@ if (@ARGV == 6) {
 		tmux('send-keys', '-t', "$session:$window.%$idx", "clear; $command", 'Enter');
 	}
 
-	ensure_hook_link();
 	tmux('attach', '-t', $session) if $config->{'auto-attach'};
 }
 
@@ -183,19 +186,13 @@ sub dashboard_is_running {
 }
 
 sub ensure_hook_link {
-	my $target = resolve_link($0);
+	my $target = abs_path($0);
 	my $symlink = task_config('rc.data.location') . '/hooks/on-exit_dashboard';
 	if (-e $symlink) {
-		die "Hook symlink points to another location!\n" if resolve_link($symlink) ne $target;
+		die "Hook symlink points to another location!\n" if abs_path($symlink) ne $target;
 	} else {
 		symlink $target, $symlink;
 	}
-}
-
-sub resolve_link {
-	my $target = shift;
-	$target = readlink $target while -l $target;
-	return $target;
 }
 
 sub task_config {
