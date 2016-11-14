@@ -56,8 +56,8 @@ Internally the list of split directives is processed in the following order:
 1. all directives before the pivot pane indicator split above
 2. all directives after the pivot pane indicator split below *in reverse order*
 Consider the following directives: `v:~:p50:p33`. This will split the pane into
-three even panes. First, the pane is split with a 2:1 ratio, then the pane is
-split again with a 1:1 ratio resulting in 1:1:1.
+three equally sized panes. First, the pane is split with a 2:1 ratio, then the
+pane is split again with a 1:1 ratio resulting in 1:1:1.
 
 See the [example configuration](doc/sample-config.json) file for a more complex example.
 
