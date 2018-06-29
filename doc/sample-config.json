@@ -11,7 +11,7 @@
 				{ "v:~:p50:p33" : [
 					"task rc.context:none summary",
 					"task rc.context:default overdue",
-					"task rc.context:none +today"
+					"task rc.context:none +TODAY"
 				] }
 			] },
 			"task burndown.daily",
